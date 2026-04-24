@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes, CallbackContext
-import anthropic
+from groq import Groq
 from supabase import create_client, Client
 
 logging.basicConfig(level=logging.INFO)
@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-ANTHROPIC_KEY = os.environ["ANTHROPIC_KEY"]
+GROQ_KEY = os.environ["GROQ_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-claude = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+groq_client = Groq(api_key=GROQ_KEY)
 
 USUARIOS = {"francisco", "anna"}
 CATEGORIAS = ["comida", "transporte", "servicios", "salud", "ocio", "hogar", "ropa", "educacion", "otros"]
@@ -71,15 +71,18 @@ def calcular_balance_impacto(tipo: str, pagador: str, monto: float) -> float:
     return 0.0
 
 async def parsear_mensaje(texto: str, usuario: str) -> dict:
-    """Llama a Claude para parsear el mensaje."""
+    """Llama a Groq para parsear el mensaje."""
     prompt = f"Usuario que escribe: {usuario}\nMensaje: {texto}"
-    response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
         max_tokens=500,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
     )
-    raw = response.content[0].text.strip()
+    raw = response.choices[0].message.content.strip()
+    raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
 
 async def chequear_predefinido(texto: str) -> dict | None:
