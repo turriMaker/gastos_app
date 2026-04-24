@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from telegram import Update
-from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes, CallbackContext
 import anthropic
 from supabase import create_client, Client
 
