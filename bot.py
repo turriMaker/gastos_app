@@ -120,14 +120,17 @@ async def handle_gasto(update: Update, parsed: dict, usuario: str, raw: str, ori
         "raw_message": raw,
         "eliminado": False
     }
-    supabase.table("gastos").insert(data).execute()
+    result = supabase.table("gastos").insert(data).execute()
+    gasto_id = result.data[0]["id"] if result.data else "?"
+    id_corto = str(gasto_id)[:8] if gasto_id != "?" else "?"
 
     tipo_emoji = "🤝" if tipo == "compartido" else "👤"
     confianza_aviso = " _(no estaba seguro, revisá)_" if confianza == "baja" else ""
     msg = (
         f"✅ *{descripcion}* — ${monto:,.0f}\n"
         f"💳 Pagó: {pagador.capitalize()}\n"
-        f"{tipo_emoji} {tipo.capitalize()} · {categoria.capitalize()}"
+        f"{tipo_emoji} {tipo.capitalize()} · {categoria.capitalize()}\n"
+        f"🆔 `{id_corto}`"
         f"{confianza_aviso}"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -356,13 +359,54 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_ver_fijos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await handle_ver_fijos(update)
 
-def main():
+async def cmd_borrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usá `/borrar ID` con los primeros caracteres del ID del gasto.", parse_mode="Markdown")
+        return
+    id_parcial = context.args[0].lower()
+    result = supabase.table("gastos").select("*").eq("eliminado", False).execute()
+    encontrado = next((g for g in result.data if g["id"].startswith(id_parcial)), None)
+    if not encontrado:
+        await update.message.reply_text(f"No encontré ningún gasto con ID `{id_parcial}`.", parse_mode="Markdown")
+        return
+    supabase.table("gastos").update({"eliminado": True}).eq("id", encontrado["id"]).execute()
+    await update.message.reply_text(
+        f"🗑️ Gasto eliminado: *{encontrado['descripcion']}* — ${encontrado['monto']:,.0f}",
+        parse_mode="Markdown"
+    )
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 *Comandos disponibles*\n\n"
+        "*Gastos en lenguaje natural:*\n"
+        "• _pagué 4500 de nafta_\n"
+        "• _anna pagó 12000 de almacén compartido_\n"
+        "• _bondi_ (si está configurado como fijo)\n\n"
+        "*Consultas:*\n"
+        "• _balance_ — deuda actual\n"
+        "• _resumen_ — gastos del mes\n"
+        "• _resumen de abril_ — gastos de un mes específico\n\n"
+        "*Saldos:*\n"
+        "• _saldar 5000_ — registrar transferencia\n\n"
+        "*Gastos fijos:*\n"
+        "/ver\\_fijos — listar fijos configurados\n"
+        "/nuevo\\_fijo `alias | descripcion | monto | tipo | pagador | categoria`\n"
+        "/borrar\\_fijo `alias` — eliminar un fijo\n\n"
+        "*Correcciones:*\n"
+        "/borrar `ID` — eliminar un gasto por ID\n\n"
+        "/help — mostrar esta ayuda",
+        parse_mode="Markdown"
+    )
+
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("balance", cmd_balance))
     app.add_handler(CommandHandler("ver_fijos", cmd_ver_fijos))
     app.add_handler(CommandHandler("nuevo_fijo", cmd_nuevo_fijo))
     app.add_handler(CommandHandler("borrar_fijo", cmd_borrar_fijo))
+    app.add_handler(CommandHandler("borrar", cmd_borrar))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("Bot iniciado")
     app.run_polling()
